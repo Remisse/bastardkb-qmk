@@ -16,9 +16,9 @@
  */
 #include QMK_KEYBOARD_H
 
-#ifdef CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
+#if defined(CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE) || defined(CHARYBDIS_IGNORE_POINTER_WHILE_TYPING)
 #    include "timer.h"
-#endif // CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
+#endif
 
 enum charybdis_keymap_layers {
     LAYER_BASE = 0,
@@ -41,6 +41,21 @@ static uint16_t auto_pointer_layer_timer = 0;
 #        define CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_THRESHOLD 8
 #    endif // CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_THRESHOLD
 #endif     // CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
+
+#ifdef CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
+static uint16_t ignore_pointer_timer = 0;
+static report_mouse_t mouse_report_original = {
+    .x = 0,
+    .y = 0,
+    .h = 0,
+    .v = 0,
+    .buttons = 0
+};
+
+#    ifndef CHARYBDIS_IGNORE_POINTER_WHILE_TYPING_TIMEOUT_MS
+#        define CHARYBDIS_IGNORE_POINTER_WHILE_TYPING_TIMEOUT_MS 500
+#    endif
+#endif
 
 #define LOWER MO(LAYER_LOWER)
 #define RAISE MO(LAYER_RAISE)
@@ -118,9 +133,34 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 };
 // clang-format on
 
+
 #ifdef POINTING_DEVICE_ENABLE
-#    ifdef CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
+
+void post_process_record_user(uint16_t keycode, keyrecord_t *record) {
+#    ifdef CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
+    if (layer_state_is(LAYER_POINTER)) {
+        ignore_pointer_timer = 0;
+    } else if (record->event.pressed) {
+        switch (keycode) {
+            case KC_MS_BTN1 ... KC_MS_BTN8:
+            case SNIPING_MODE ... DRAGSCROLL_MODE_TOGGLE:
+                ignore_pointer_timer = 0;
+                break;
+            default:
+                if (ignore_pointer_timer == 0) {
+                    mouse_report_original = pointing_device_get_report();
+                    mouse_report_original.buttons = 0;
+                }
+
+                ignore_pointer_timer = timer_read();
+                break;
+        }
+    }
+#    endif // CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
+}
+
 report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
+#    ifdef CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
     if (abs(mouse_report.x) > CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_THRESHOLD || abs(mouse_report.y) > CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_THRESHOLD) {
         if (auto_pointer_layer_timer == 0) {
             layer_on(LAYER_POINTER);
@@ -131,10 +171,19 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
         }
         auto_pointer_layer_timer = timer_read();
     }
+#    endif // CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
+#    ifdef CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
+    if (ignore_pointer_timer != 0 && TIMER_DIFF_16(timer_read(), ignore_pointer_timer) > CHARYBDIS_IGNORE_POINTER_WHILE_TYPING_TIMEOUT_MS) {
+        ignore_pointer_timer = 0;
+    } else if (ignore_pointer_timer != 0) {
+        mouse_report = mouse_report_original;
+    }
+#    endif // CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
     return mouse_report;
 }
 
 void matrix_scan_user(void) {
+#    ifdef CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
     if (auto_pointer_layer_timer != 0 && TIMER_DIFF_16(timer_read(), auto_pointer_layer_timer) >= CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_TIMEOUT_MS) {
         auto_pointer_layer_timer = 0;
         layer_off(LAYER_POINTER);
@@ -142,8 +191,8 @@ void matrix_scan_user(void) {
         rgb_matrix_mode_noeeprom(RGB_MATRIX_DEFAULT_MODE);
 #        endif // RGB_MATRIX_ENABLE
     }
-}
 #    endif // CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
+}
 
 #    ifdef CHARYBDIS_AUTO_SNIPING_ON_LAYER
 layer_state_t layer_state_set_user(layer_state_t state) {
