@@ -44,13 +44,6 @@ static uint16_t auto_pointer_layer_timer = 0;
 
 #ifdef CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
 static uint16_t ignore_pointer_timer = 0;
-static report_mouse_t mouse_report_original = {
-    .x = 0,
-    .y = 0,
-    .h = 0,
-    .v = 0,
-    .buttons = 0
-};
 
 #    ifndef CHARYBDIS_IGNORE_POINTER_WHILE_TYPING_TIMEOUT_MS
 #        define CHARYBDIS_IGNORE_POINTER_WHILE_TYPING_TIMEOUT_MS 500
@@ -147,11 +140,6 @@ void post_process_record_user(uint16_t keycode, keyrecord_t *record) {
                 ignore_pointer_timer = 0;
                 break;
             default:
-                if (ignore_pointer_timer == 0) {
-                    mouse_report_original = pointing_device_get_report();
-                    mouse_report_original.buttons = 0;
-                }
-
                 ignore_pointer_timer = timer_read();
                 break;
         }
@@ -176,7 +164,14 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
     if (ignore_pointer_timer != 0 && TIMER_DIFF_16(timer_read(), ignore_pointer_timer) > CHARYBDIS_IGNORE_POINTER_WHILE_TYPING_TIMEOUT_MS) {
         ignore_pointer_timer = 0;
     } else if (ignore_pointer_timer != 0) {
-        mouse_report = mouse_report_original;
+        const report_mouse_t report_empty = {
+            .x = 0,
+            .y = 0,
+            .h = 0,
+            .v = 0,
+            .buttons = 0
+        };
+        mouse_report = report_empty;
     }
 #    endif // CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
     return mouse_report;
