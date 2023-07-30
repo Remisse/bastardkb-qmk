@@ -27,6 +27,8 @@ enum charybdis_keymap_layers {
     LAYER_POINTER,
 };
 
+#define CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
+
 /** \brief Automatically enable sniping-mode on the pointer layer. */
 #define CHARYBDIS_AUTO_SNIPING_ON_LAYER LAYER_POINTER
 
@@ -168,7 +170,7 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
     }
 #    endif // CHARYBDIS_AUTO_POINTER_LAYER_TRIGGER_ENABLE
 #    ifdef CHARYBDIS_IGNORE_POINTER_WHILE_TYPING
-    if (ignore_pointer_timer != 0) {
+    if (ignore_pointer_timer != 0 && has_mouse_report_changed(&mouse_report, &report_empty)) {
         mouse_report = report_empty;
 
         if (TIMER_DIFF_16(timer_read(), ignore_pointer_timer) > CHARYBDIS_IGNORE_POINTER_WHILE_TYPING_TIMEOUT_MS)
